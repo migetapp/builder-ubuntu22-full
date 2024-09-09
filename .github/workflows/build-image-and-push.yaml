@@ -36,7 +36,8 @@ jobs:
           REPO_NAME=${{ github.event.repository.name }}
           docker build \
             --build-arg RELEASE_VERSION=${{ github.event.inputs.release_version }} \
-            -t ${{ secrets.DOCKER_HUB_USERNAME }}/${REPO_NAME}:${{ github.event.inputs.release_version }}
+            -t ${{ secrets.DOCKER_HUB_USERNAME }}/${REPO_NAME}:${{ github.event.inputs.release_version }} \
+            .
 
       - name: Squash Docker image
         run: |
