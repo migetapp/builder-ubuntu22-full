@@ -1,0 +1,45 @@
+name: Check for New Release of Paketo Jammy Builder Full
+on:
+  schedule:
+    - cron: '0/10 * * * *'  # Runs every 10 minutes
+
+jobs:
+  check-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Get latest release
+        id: get_release
+        run: |
+          set -e
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/paketo-buildpacks/builder-jammy-full/releases/latest | jq -r .tag_name | sed -e 's/v//g')
+          if [ -z "$LATEST_RELEASE" ]; then
+            echo "No release found. Exiting..."
+            exit 1
+          fi
+          echo "::set-output name=release::$LATEST_RELEASE"
+
+      - name: Check Docker Hub for existing image
+        id: check_image
+        run: |
+          set -e
+          REPO_NAME=${{ github.event.repository.name }}
+          IMAGE_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://hub.docker.com/v2/repositories/${{ secrets.DOCKER_LOGIN }}/${{ REPO_NAME }}/tags/${{ steps.get_release.outputs.release }})
+          if [ "$IMAGE_EXISTS" == "200" ]; then
+            echo "Image for release ${{ steps.get_release.outputs.release }} already exists. Skipping build."
+            exit 0
+          fi
+          echo "Image for release ${{ steps.get_release.outputs.release }} does not exist. Proceeding with build."
+
+      - name: Trigger Build, Squash and Push Stack Image
+        if: steps.get_release.outputs.release != '' && steps.get_release.outputs.release != steps.check_image.outputs.release
+        run: |
+          set -e
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.event.repository.owner.login }}/${{ github.event.repository.name }}/actions/workflows/build-image-and-push/dispatches \
+          -d '{"ref":"main", "inputs": { "release_version": "${{ steps.get_release.outputs.release }}" }}'
